@@ -44,3 +44,9 @@
 		fill: var(--tooltip-background-color);
 	}
 }
+
+/* The popper wrapper keeps capturing pointer events even when the tooltip is closed, blocking
+   clicks on whatever it overlaps. */
+[data-reka-popper-content-wrapper]:has(> .tooltip) {
+	pointer-events: none;
+}

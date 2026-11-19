@@ -73,6 +73,48 @@ const monthFormatter = computed(() => {
 	return new DateFormatter(userStore.language, { month: 'long', timeZone: 'UTC' });
 });
 
+const weekDayFormatter = computed(() => {
+	return new DateFormatter(userStore.language, { weekday: 'short', timeZone: 'UTC' });
+});
+
+/** Index (0 = Sunday … 6 = Saturday) of the first day of the week for the user's language. */
+const weekStartIndex = computed(() => {
+	try {
+		const locale = new Intl.Locale(userStore.language) as Intl.Locale & { weekInfo?: { firstDay: number } };
+		const firstDay = locale.weekInfo?.firstDay;
+
+		// CLDR numbers the first day 1 (Monday) … 7 (Sunday), JS uses 0 (Sunday) … 6 (Saturday).
+		if (typeof firstDay === 'number') return firstDay % 7;
+	} catch {
+		// Unsupported or invalid locale tag — fall through to Monday.
+	}
+
+	return 1;
+});
+
+const localizedWeekDays = computed(() => {
+	// 2024-01-07 is a Sunday; formatted at noon UTC so the weekday can't shift across timezones.
+	const sunday = Date.UTC(2024, 0, 7, 12);
+
+	return Array.from({ length: 7 }, (_, index) => {
+		const date = new Date(sunday + ((weekStartIndex.value + index) % 7) * 86_400_000);
+		return weekDayFormatter.value.format(date);
+	});
+});
+
+/** Rotates a week so it starts on the locale's first day, keeping the header and grid aligned. */
+function alignWeekStart<T extends { toDate: (timeZone: string) => Date }>(week: T[]): T[] {
+	const firstDay = week[0]?.toDate('UTC').getUTCDay();
+
+	if (firstDay === undefined) return week;
+
+	const offset = (weekStartIndex.value - firstDay + 7) % 7;
+
+	if (offset === 0) return week;
+
+	return [...week.slice(offset), ...week.slice(0, offset)];
+}
+
 const monthOptions = computed(() => {
 	return Array.from({ length: 12 }, (_, index) => {
 		const value = index + 1;
@@ -151,9 +193,10 @@ function setToNow() {
 <template>
 	<div class="v-date-picker">
 		<CalendarRoot
-			v-slot="{ weekDays, grid, date }"
+			v-slot="{ grid, date }"
 			:model-value="calendarValue"
 			:disabled="disabled"
+			:locale="userStore.language"
 			class="calendar"
 			fixed-weeks
 			weekday-format="short"
@@ -194,7 +237,7 @@ function setToNow() {
 					<CalendarGrid v-for="month in grid" :key="month.value.toString()" class="calendar-grid">
 						<CalendarGridHead class="calendar-grid-head">
 							<CalendarGridRow class="calendar-grid-row">
-								<CalendarHeadCell v-for="day in weekDays" :key="day" class="calendar-head-cell">
+								<CalendarHeadCell v-for="day in localizedWeekDays" :key="day" class="calendar-head-cell">
 									{{ day }}
 								</CalendarHeadCell>
 							</CalendarGridRow>
@@ -206,7 +249,7 @@ function setToNow() {
 								class="calendar-grid-row"
 							>
 								<CalendarCell
-									v-for="weekDate in weekDates"
+									v-for="weekDate in alignWeekStart(weekDates)"
 									:key="weekDate.toString()"
 									:date="weekDate"
 									class="calendar-cell"
